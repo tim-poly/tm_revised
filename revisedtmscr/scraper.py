@@ -4,11 +4,20 @@ from network import fetch_page
 from parser import parse_products
 from storage import append_to_csv
 from utils import log
-from config import BASE_URL, FETCH_ALTERNATE_URLS
+from config import (
+    BASE_URL_SE,
+    BASE_URL_FI,
+    BASE_URL_NO,
+    BASE_URL_DK,
+    COL_TM_EUR,
+    COL_TM_NOK,
+    COL_TM_DKK,
+    FETCH_ALTERNATE_URLS,
+)
 from bs4 import BeautifulSoup
 from utils import brand_to_slug
 import re
-from parser import extract_country_map
+from parser import extract_country_map, parse_price_map
 
 resolved_urls = {}
 
@@ -57,18 +66,27 @@ def scrape_all_pages(brand, global_skus):
 
     while True:
 
-        url = BASE_URL.format(brand, page)
+        url_se = BASE_URL_SE.format(brand, page)
         log(f"[SCRAPE] Brand: {brand} | Page: {page}")
 
-        html = fetch_page(url)
+        html_se = fetch_page(url_se)
 
-        if html is None:
+        if html_se is None:
             if page == 1:
                 print(f"Skipping brand {brand}")
                 return []
             break
 
-        products = parse_products(html)
+        products = parse_products(html_se)
+
+        # Fetch locale listing pages and build SKU -> price maps.
+        html_fi = fetch_page(BASE_URL_FI.format(brand, page))
+        html_no = fetch_page(BASE_URL_NO.format(brand, page))
+        html_dk = fetch_page(BASE_URL_DK.format(brand, page))
+
+        price_map_fi = parse_price_map(html_fi) if html_fi else {}
+        price_map_no = parse_price_map(html_no) if html_no else {}
+        price_map_dk = parse_price_map(html_dk) if html_dk else {}
 
         if not products:
             print(f"No products found for {brand} page {page}")
@@ -93,6 +111,11 @@ def scrape_all_pages(brand, global_skus):
             product_url = resolved_urls.get(sku) or p.get("url")
             if not product_url:
                 continue
+
+            # Ensure the columns exist for consistent CSV headers.
+            p[COL_TM_EUR] = price_map_fi.get(sku)
+            p[COL_TM_NOK] = price_map_no.get(sku)
+            p[COL_TM_DKK] = price_map_dk.get(sku)
 
             # If your only requirement is the Swedish product URL, don't hit the product page at all.
             p["url_se"] = product_url
