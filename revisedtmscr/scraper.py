@@ -8,6 +8,8 @@ from config import BASE_URL
 from bs4 import BeautifulSoup
 from utils import brand_to_slug
 import re
+from parser import extract_country_map
+
 sku_lock = threading.Lock()
 
 def discover_brands():
@@ -83,6 +85,33 @@ def scrape_all_pages(brand, global_skus):
                 if sku in global_skus:
                     continue
                 global_skus.add(sku)
+
+                """""# --- NEW: build product URL (temporary slug method) ---
+                name = p.get("name", "")
+                slug = (
+                    name.lower()
+                    .replace(" ", "_")
+                    .replace("-", "_")
+                    .replace("/", "_")
+                    .replace(".", "")
+                )
+
+                product_url = f"https://www.thomann.se/{slug}.htm"""
+
+                product_url = p.get("url")
+                product_html = fetch_page(product_url)
+
+            if not product_html:
+                continue
+
+            # --- NEW: extract country map ---
+            country_map = extract_country_map(product_html)
+
+            # --- attach to product ---
+            p["url_se"] = country_map.get("sv-SE")
+            p["url_no"] = country_map.get("en-NO")
+            p["url_dk"] = country_map.get("da-DK")
+            p["url_fi"] = country_map.get("fi-FI")
 
             new_products.append(p)
 

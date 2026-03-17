@@ -80,5 +80,10 @@ def fetch_page(url, retries=5):
             print(f"Retrying in {round(wait,1)} seconds...")
             time.sleep(wait)
 
+        html = fetch_page(url)
+
+        if html is None:
+            print(f"Failed to fetch page: {url}")
+
     return None
 

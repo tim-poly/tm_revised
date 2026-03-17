@@ -21,7 +21,7 @@ def main():
 
     print("\nStarting parallel scraping...\n")
 
-    with ThreadPoolExecutor(max_workers=4) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
 
         futures = [
             executor.submit(scrape_all_pages, brand, global_skus)

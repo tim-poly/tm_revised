@@ -1,6 +1,13 @@
 from datetime import datetime
 import threading
 
+BRAND_SLUG_MAP = {
+    "ADAM Audio": "adam",
+    "Way Huge": "way_huge",
+    "Rode": "rode",
+    "RODE": "rode",
+}
+
 ##terminal log##
 def log(message):
     now = datetime.now().strftime("%H:%M:%S")
