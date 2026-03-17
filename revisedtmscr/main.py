@@ -4,6 +4,7 @@ from scraper import scrape_all_pages
 from storage import save_to_csv
 from utils import print_summary
 from brands import TARGET_BRANDS
+from config import MAX_WORKERS
 
 # Thread safety
 sku_lock = threading.Lock()
@@ -21,7 +22,7 @@ def main():
 
     print("\nStarting parallel scraping...\n")
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
 
         futures = [
             executor.submit(scrape_all_pages, brand, global_skus)

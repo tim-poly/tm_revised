@@ -11,6 +11,17 @@ adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20)
 SESSION.mount('http://', adapter)
 SESSION.mount('https://', adapter)
 
+_SESSION_UA = random.choice(USER_AGENTS)
+
+_BASE_HEADERS = {
+    # Keep one stable UA per run; rotating every request is unusually bot-like.
+    "User-Agent": _SESSION_UA,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "sv-SE,sv;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 class RequestScheduler:
 
     def __init__(self):
@@ -34,21 +45,17 @@ class RequestScheduler:
 scheduler = RequestScheduler()
 
 
-def fetch_page(url, retries=5):
+def fetch_page(url, retries=5, return_status=False):
 
     for attempt in range(retries):
 
         scheduler.wait()
 
         try:
-            headers = {
-                "User-Agent": random.choice(USER_AGENTS),
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "Accept-Language": "en-US,en;q=0.9",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Connection": "keep-alive",
-                "Upgrade-Insecure-Requests": "1"
-            }
+            headers = dict(_BASE_HEADERS)
+            # Only send a referer when we are hitting the Swedish site.
+            if url.startswith("https://www.thomann.se/"):
+                headers["Referer"] = "https://www.thomann.se/"
 
             response = SESSION.get(
                 url,
@@ -58,7 +65,16 @@ def fetch_page(url, retries=5):
 
             if response.status_code == 404:
                 print(f"404 page: {url}")
-                return None
+                return (None, 404) if return_status else None
+
+            if response.status_code == 403:
+                # Treat 403 as a hard block; backing off may help, but repeated retries tend to worsen it.
+                log(f"[FORBIDDEN] 403 for {url}")
+                scheduler.rate_limited()
+                if attempt < retries - 1:
+                    time.sleep(random.uniform(10, 25))
+                    continue
+                return (None, 403) if return_status else None
 
             if response.status_code == 429:
                 scheduler.rate_limited()
@@ -71,7 +87,7 @@ def fetch_page(url, retries=5):
             response.raise_for_status()
 
             scheduler.success()
-            return response.text
+            return (response.text, response.status_code) if return_status else response.text
 
         except requests.RequestException as e:
 
@@ -80,10 +96,8 @@ def fetch_page(url, retries=5):
             print(f"Retrying in {round(wait,1)} seconds...")
             time.sleep(wait)
 
-        html = fetch_page(url)
+        if attempt > 0 and attempt % 3 == 0:
+            # If the site sets a bad cookie we may want to recover, but don't nuke cookies immediately.
+            SESSION.cookies.clear()
 
-        if html is None:
-            print(f"Failed to fetch page: {url}")
-
-    return None
-
+    return (None, None) if return_status else None

@@ -4,11 +4,13 @@ from network import fetch_page
 from parser import parse_products
 from storage import append_to_csv
 from utils import log
-from config import BASE_URL
+from config import BASE_URL, FETCH_ALTERNATE_URLS
 from bs4 import BeautifulSoup
 from utils import brand_to_slug
 import re
 from parser import extract_country_map
+
+resolved_urls = {}
 
 sku_lock = threading.Lock()
 
@@ -77,6 +79,8 @@ def scrape_all_pages(brand, global_skus):
         for p in products:
 
             sku = p.get("sku")
+            name = p.get("name", "") or ""
+            item_brand = p.get("brand", "") or ""
 
             if not sku:
                 continue
@@ -86,9 +90,21 @@ def scrape_all_pages(brand, global_skus):
                     continue
                 global_skus.add(sku)
 
-                """""# --- NEW: build product URL (temporary slug method) ---
-                name = p.get("name", "")
-                slug = (
+            product_url = resolved_urls.get(sku) or p.get("url")
+            if not product_url:
+                continue
+
+            # If your only requirement is the Swedish product URL, don't hit the product page at all.
+            p["url_se"] = product_url
+            if not FETCH_ALTERNATE_URLS:
+                new_products.append(p)
+                continue
+
+            product_html, status = fetch_page(product_url, return_status=True)
+
+            # Try different URL variants only when we got a real 404 (bad slug), not when we are blocked (403).
+            if not product_html and status == 404 and name:
+                name_slug = (
                     name.lower()
                     .replace(" ", "_")
                     .replace("-", "_")
@@ -96,14 +112,36 @@ def scrape_all_pages(brand, global_skus):
                     .replace(".", "")
                 )
 
-                product_url = f"https://www.thomann.se/{slug}.htm"""
+                candidates = [f"https://www.thomann.se/{name_slug}.htm"]
 
-                product_url = p.get("url")
-                product_html = fetch_page(product_url)
+                if item_brand:
+                    raw_brand_slug = (
+                        item_brand.lower()
+                        .replace(" ", "_")
+                        .replace("-", "_")
+                        .replace(".", "")
+                    )
+                    candidates.append(f"https://www.thomann.se/{raw_brand_slug}_{name_slug}.htm")
 
+                for candidate_url in candidates:
+                    candidate_html, candidate_status = fetch_page(candidate_url, return_status=True)
+                    if candidate_html:
+                        product_url = candidate_url
+                        product_html = candidate_html
+                        status = candidate_status
+                        break
+
+            # If still nothing → skip
             if not product_html:
+                print(f"FAILED to fetch product page (status={status}) for {product_url}")
                 continue
 
+            # ✅ SUCCESS → store correct URL
+            p["url"] = product_url
+
+            # ✅ CACHE IT (important!)
+            resolved_urls[sku] = product_url
+            print(f"FINAL URL USED: {product_url}")
             # --- NEW: extract country map ---
             country_map = extract_country_map(product_html)
 

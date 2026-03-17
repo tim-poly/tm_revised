@@ -93,6 +93,7 @@ def parse_products(html):
         else:
             slug = f"{brand_slug}_{name_slug}"
 
+
         url = f"https://www.thomann.se/{slug}.htm"
 
         product = {
